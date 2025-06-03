@@ -41,5 +41,106 @@ const validate = (fields) => {
 };
 
 // BEGIN
+export default () => {
+  const container = document.querySelector('[data-container="sign-up"]');
+  const form = container.querySelector('[data-form="sign-up"]');
+  const submitButton = form.querySelector('input[type="submit"]');
+  
+  const initialState = {
+    form: {
+      name: '',
+      email: '',
+      password: '',
+      passwordConfirmation: '',
+    },
+    errors: {},
+    isValid: false,
+    processState: 'filling',
+  };
 
+  const watchedState = onChange(initialState, (path, value, previousValue) => {
+    if (path === 'form') {
+      const errors = validate(watchedState.form);
+      watchedState.errors = errors;
+      watchedState.isValid = isEmpty(errors);
+    }
+
+    if (path === 'errors' || path === 'isValid') {
+      renderForm(form, watchedState);
+    }
+
+    if (path === 'processState') {
+      switch (value) {
+        case 'processing':
+          submitButton.disabled = true;
+          break;
+        case 'finished':
+          container.innerHTML = 'User Created!';
+          break;
+        case 'error':
+          submitButton.disabled = false;
+          break;
+        case 'filling':
+          submitButton.disabled = !watchedState.isValid;
+          break;
+        default:
+          throw new Error(`Unknown process state: ${value}`);
+      }
+    }
+  });
+
+  const renderForm = (formElement, state) => {
+    const formElements = Array.from(formElement.elements).filter(el => el.name);
+
+    formElements.forEach(element => {
+      const errorKey = element.name;
+      const error = state.errors[errorKey];
+
+      if (error) {
+        element.classList.add('is-invalid');
+        let feedbackElement = element.nextElementSibling;
+
+        if (!feedbackElement || !feedbackElement.classList.contains('invalid-feedback')) {
+          feedbackElement = document.createElement('div');
+          feedbackElement.classList.add('invalid-feedback');
+          element.after(feedbackElement);
+        }
+        feedbackElement.textContent = error.message;
+      } else {
+        element.classList.remove('is-invalid');
+        let feedbackElement = element.nextElementSibling;
+        if (feedbackElement && feedbackElement.classList.contains('invalid-feedback')) {
+          feedbackElement.remove();
+        }
+      }
+    });
+    submitButton.disabled = !state.isValid || watchedState.processState === 'processing';
+  };
+  form.addEventListener('input', (e) => {
+    const { target } = e;
+    watchedState.form = {
+      ...watchedState.form,
+      [target.name]: target.value,
+    };
+  });
+  form.addEventListener('submit', (e) => {
+    e.preventDefault();
+    watchedState.processState = 'processing';
+
+    axios.post(routes.usersPath(), watchedState.form)
+      .then(() => {
+        watchedState.processState = 'finished';
+      })
+      .catch((err) => {
+        console.error('Submission error:', err);
+
+        let errorMessage = errorMessages.network.error;
+        if (err.response && err.response.status === 409) {
+          errorMessage = 'This email is already registered';
+        }
+        watchedState.processState = 'error';
+      });
+  });
+  renderForm(form, watchedState);
+};
 // END
